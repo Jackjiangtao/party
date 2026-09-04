@@ -1,0 +1,18 @@
+services:
+  juhuidian:
+    build: .
+    image: juhuidian:latest
+    container_name: juhuidian
+    volumes:
+      - ./data:/app/data
+    ports:
+      - "8788:8788"
+    restart: unless-stopped
+  # Cloudflare 快速隧道：自动获得 https://xxx.trycloudflare.com 公网地址（每次重启会变）
+  tunnel:
+    image: docker.1ms.run/cloudflare/cloudflared:latest
+    container_name: juhuidian-tunnel
+    command: tunnel --no-autoupdate --url http://juhuidian:8788
+    restart: unless-stopped
+    depends_on:
+      - juhuidian

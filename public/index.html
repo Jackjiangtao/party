@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>聚会点共享 · 找大家都近的地方</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root{--panel:#1e2433;--panel2:#283043;--line:#3a4560;--txt:#e8ecf5;--dim:#9aa5bd;--acc:#4b9cff;--ok:#37c99a;--warn:#f0b341;--err:#ff6b6b;}
+  *{box-sizing:border-box;}
+  html,body{margin:0;height:100%;font-family:"Segoe UI","Microsoft YaHei",system-ui,sans-serif;background:#0f1320;color:var(--txt);}
+  #app{display:flex;height:100vh;}
+  #side{width:380px;min-width:330px;background:var(--panel);border-right:1px solid var(--line);overflow-y:auto;overflow-x:hidden;}
+  #map{flex:1;background:#10151f;}
+  .hd{padding:16px 18px 14px;border-bottom:1px solid var(--line);}
+  .hd h1{margin:0;font-size:18px;}
+  .hd .sub{margin:6px 0 0;font-size:12px;color:var(--dim);line-height:1.5;}
+  .sec{padding:13px 18px;border-bottom:1px solid var(--line);}
+  .sec h2{margin:0 0 10px;font-size:13px;color:var(--acc);font-weight:600;}
+  .sec h2 .st{font-size:11px;color:var(--dim);font-weight:400;}
+  .row{display:flex;gap:8px;margin-bottom:8px;align-items:center;}
+  input,select{background:var(--panel2);border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:8px 10px;font-size:13px;outline:none;}
+  input:focus,select:focus{border-color:var(--acc);}
+  .grow{flex:1;}
+  input[type=text]{width:100%;}
+  .tiny{font-size:11px;color:var(--dim);margin:2px 0 8px;line-height:1.5;}
+  button{background:var(--acc);border:none;color:#071018;border-radius:6px;padding:8px 12px;font-size:13px;font-weight:600;cursor:pointer;}
+  button:hover{filter:brightness(1.08);}
+  button.ghost{background:transparent;border:1px solid var(--line);color:var(--txt);font-weight:500;}
+  button.acc{background:var(--ok);color:#04140e;}
+  button:disabled{opacity:.45;cursor:not-allowed;}
+  .share{background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:9px 10px;margin-top:8px;}
+  .share .lbl{font-size:11px;color:var(--dim);margin-bottom:4px;}
+  .share a{color:var(--acc);word-break:break-all;font-size:12px;}
+  .share button{width:100%;margin-top:6px;}
+  .legend{list-style:none;margin:0;padding:0;max-height:160px;overflow:auto;font-size:12px;}
+  .legend li{display:flex;align-items:center;gap:8px;padding:4px 2px;border-bottom:1px dashed var(--line);}
+  .legend .dot{width:10px;height:10px;border-radius:50%;flex:none;box-shadow:0 0 0 2px rgba(0,0,0,.3);}
+  .legend .nm{flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .legend .del{cursor:pointer;color:var(--dim);background:none;border:none;padding:0 4px;font-size:14px;}
+  .legend .del:hover{color:var(--err);}
+  .radio{margin:4px 0 8px;font-size:12px;display:flex;gap:12px;flex-wrap:wrap;}
+  .radio label{display:flex;align-items:center;gap:5px;cursor:pointer;}
+  .stats{font-size:12.5px;line-height:1.7;background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-top:10px;}
+  .stats b{color:var(--ok);}.stats .k{color:var(--dim);}
+  #venues{font-size:12.5px;}
+  .vcard{display:flex;align-items:center;gap:10px;padding:9px 10px;border-bottom:1px solid var(--line);}
+  .vcard .ic{width:8px;height:8px;border-radius:50%;flex:none;}
+  .vcard .body{flex:1;min-width:0;}
+  .vcard .nm{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+  .vcard .sub{color:var(--dim);font-size:11px;margin-top:2px;}
+  .vcard a.colink{color:var(--acc);text-decoration:none;font-size:11px;flex:none;}
+  .vcard a.colink:hover{text-decoration:underline;}
+  .empty{padding:18px;color:var(--dim);font-size:12px;text-align:center;display:none;}
+  #status{position:fixed;bottom:14px;left:396px;z-index:1200;background:rgba(20,26,40,.95);border:1px solid var(--line);border-radius:8px;padding:8px 14px;font-size:12px;display:none;max-width:420px;}
+  #status.info{border-color:var(--acc);}#status.ok{border-color:var(--ok);}#status.err{border-color:var(--err);}
+  .leaflet-container{font-family:inherit;}
+  @media(max-width:820px){#side{width:100%;height:52%;min-width:unset;border-right:none;border-bottom:1px solid var(--line);}#map{height:48%;}#app{flex-direction:column;}#status{left:14px;}}
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="side">
+    <div class="hd">
+      <h1>🎯 聚会点共享</h1>
+      <div class="sub">创建房间，把链接发给朋友。大家各自填位置，自动算离大家都近的地方，并推荐附近场所。</div>
+    </div>
+
+    <!-- 创建 / 加入 -->
+    <div class="sec" id="createSec">
+      <h2>① 创建你的聚会房间</h2>
+      <div class="row">
+        <input class="grow" type="text" id="roomName" placeholder="聚会名，如：周五喝茶局">
+      </div>
+      <button id="btnCreate" class="acc" style="width:100%">创建并生成邀请链接</button>
+      <div class="tiny">朋友打开链接即可加入，无需下载。</div>
+    </div>
+
+    <div class="sec" id="roomSec" style="display:none">
+      <h2>① 房间 <span class="st" id="roomNameTag"></span></h2>
+      <div class="share">
+        <div class="lbl">邀请链接（发给朋友，各自点开填位置）</div>
+        <a id="shareLink" target="_blank"></a>
+        <button id="btnCopy" class="ghost">复制链接</button>
+      </div>
+      <div class="tiny">位置会自动同步给房间内所有人（约 3 秒刷新一次）。</div>
+    </div>
+
+    <div class="sec" id="addSec" style="display:none">
+      <h2>② 添加我/朋友的位置</h2>
+      <div class="row"><input class="grow" type="text" id="nameInput" placeholder="名字（如：小鹏）"></div>
+      <div class="row">
+        <input class="grow" type="text" id="addrInput" placeholder="地址/定位，如：上海市静安区南京西路100号">
+      </div>
+      <div class="row">
+        <button id="btnAddr">按地址添加</button>
+        <button id="btnMap" class="ghost">地图点选</button>
+        <button id="btnMe" class="ghost">用我的位置</button>
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--dim);margin:2px 0 6px"><input type="checkbox" id="showNames" checked> 地图上显示名字</label>
+      <ul class="legend" id="legend"></ul>
+    </div>
+
+    <div class="sec" id="calcSec" style="display:none">
+      <h2>③ 计算聚会点 <span class="st">离谁都不太远</span></h2>
+      <div class="radio">
+        <label><input type="radio" name="mode" value="median" checked> 总路程最短</label>
+        <label><input type="radio" name="mode" value="minmax"> 谁都近</label>
+        <label><input type="radio" name="mode" value="centroid"> 几何中心</label>
+      </div>
+      <button id="btnCalc" class="acc" style="width:100%">计算推荐聚会点</button>
+      <div class="stats" id="stats" style="display:none"></div>
+    </div>
+
+    <div class="sec" id="searchSec" style="display:none">
+      <h2>④ 附近场所推荐</h2>
+      <div class="row">
+        <select id="category" class="grow">
+          <option value="餐厅">🍜 餐厅</option>
+          <option value="咖啡">☕ 咖啡</option>
+          <option value="茶馆">🍵 茶馆</option>
+          <option value="酒吧">🍺 酒吧</option>
+          <option value="商场">🛍️ 商场</option>
+          <option value="KTV">🎮 娱乐</option>
+        </select>
+      </div>
+      <div class="row"><input class="grow" type="text" id="customKw" placeholder="自定义关键词（可选，如：茶空间）"></div>
+      <div class="row">
+        <span style="font-size:12px;color:var(--dim);flex:none">搜索半径</span>
+        <input type="number" id="radius" style="width:80px" min="100" max="100000" step="100" value="3000">
+        <select id="radiusUnit" style="width:70px"><option value="m">米</option><option value="km">公里</option><option value="all">不限</option></select>
+      </div>
+      <button id="btnSearch" style="width:100%">搜索范围内的场所</button>
+      <div id="destPanel" style="display:none"></div>
+      <div id="venues"></div>
+      <div class="empty" id="venuesEmpty">先「计算聚会点」，再点上方搜索。</div>
+    </div>
+  </div>
+
+  <div id="map"></div>
+</div>
+<div id="status"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function(){
+  "use strict";
+  var $=function(id){return document.getElementById(id);};
+  var PALETTE=["#ff6b6b","#4b9cff","#f0b341","#37c99a","#dc8bff","#ffab4a","#5ad0e0","#a3e05a"];
+  function colorFor(i){return PALETTE[i%PALETTE.length];}
+  function esc(s){return String(s==null?'':s).replace(/[&<>"']/g,function(c){return {'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c];});}
+  function show(msg,type){var s=$('status');s.textContent=msg;s.className='';s.classList.add(type||'info');s.style.display='block';clearTimeout(s._t);s._t=setTimeout(function(){s.style.display='none';},3800);}
+
+  // 地图（OSM 瓦片在国内经常连不上，改用高德瓦片，秒开）
+  var map=L.map('map',{zoomControl:true}).setView([31.23,121.47],12);
+  L.tileLayer('https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}',{subdomains:['1','2','3','4'],maxZoom:18,attribution:'&copy; 高德地图'}).addTo(map);
+
+  // WGS-84（浏览器定位）→ GCJ-02（高德瓦片/检索坐标），否则「用我的位置」会偏移几百米
+  function outOfChina(lng,lat){return !(lng>73.66&&lng<135.05&&lat>3.86&&lat<53.55);}
+  function tfLat(x,y){var r=-100+2*x+3*y+0.2*y*y+0.1*x*y+0.2*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;r+=(20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;r+=(160*Math.sin(x/12*Math.PI)+320*Math.sin(x*Math.PI/30))*2/3;return r;}
+  function tfLng(x,y){var r=300+x+2*y+0.1*x*x+0.1*x*y+0.1*Math.sqrt(Math.abs(x));r+=(20*Math.sin(6*x*Math.PI)+20*Math.sin(2*x*Math.PI))*2/3;r+=(20*Math.sin(x*Math.PI)+40*Math.sin(x/3*Math.PI))*2/3;r+=(150*Math.sin(x/12*Math.PI)+300*Math.sin(x/30*Math.PI))*2/3;return r;}
+  function wgs2gcj(lng,lat){if(outOfChina(lng,lat))return{lng:lng,lat:lat};var a=6378245,ee=0.00669342162296594323,dLat=tfLat(lng-105,lat-35),dLng=tfLng(lng-105,lat-35),radLat=lat/180*Math.PI,magic=1-ee*Math.sin(radLat)*Math.sin(radLat),sqrtMagic=Math.sqrt(magic);dLat=(dLat*180)/((a*(1-ee))/(magic*sqrtMagic)*Math.PI);dLng=(dLng*180)/(a/sqrtMagic*Math.cos(radLat)*Math.PI);return{lng:lng+dLng,lat:lat+dLat};}
+
+  // 状态
+  var roomId=null, people=[], meeting=null, clickMode=false;
+  var personLayer=L.layerGroup().addTo(map);
+  var venueLayer=L.layerGroup().addTo(map);
+  var meetingMarker=null, meetingCircle=null;
+
+  // 从路径解析房间号：/r/<id>
+  function roomFromPath(){var m=location.pathname.match(/\/r\/([^\/]+)/);return m?decodeURIComponent(m[1]):null;}
+
+  // ---------- 房间 ----------
+  function api(method,url,body){
+    return fetch(url,{method:method,headers:{'Content-Type':'application/json'},body:body?JSON.stringify(body):undefined})
+      .then(function(r){return r.json().then(function(d){if(!r.ok)throw new Error(d.error||('HTTP '+r.status));return d;});});
+  }
+  function enterRoom(id){
+    roomId=id;
+    $('createSec').style.display='none';$('roomSec').style.display='block';$('addSec').style.display='block';$('calcSec').style.display='block';$('searchSec').style.display='block';
+    var link=location.origin+'/r/'+roomId;
+    $('shareLink').href=link;$('shareLink').textContent=link;
+    loadRoom();startPoll();
+  }
+  function loadRoom(){
+    if(!roomId)return;
+    api('GET','/api/room/'+roomId).then(function(rm){
+      $('roomNameTag').textContent=rm.name||'';
+      $('shareLink').textContent=location.origin+'/r/'+roomId;
+      people=rm.people||[];
+      renderPeople();
+    }).catch(function(e){show('加载房间失败：'+e.message,'err');});
+  }
+  function startPoll(){setInterval(loadRoom,3000);}
+  function renderPeople(){
+    var ul=$('legend');ul.innerHTML='';
+    if(!people.length){ul.innerHTML='<li style="border:none;color:var(--dim)">还没有人，把链接发给朋友吧</li>';}
+    personLayer.clearLayers();
+    people.forEach(function(p,i){
+      var icon=L.divIcon({className:'',html:'<div style="display:flex;align-items:center;gap:4px;white-space:nowrap"><span style="width:14px;height:14px;border-radius:50%;background:'+colorFor(i)+';border:2px solid #fff;box-shadow:0 1px 4px rgba(0,0,0,.5);flex:none"></span>'+(($('showNames').checked)?'<span style="font-size:11px;font-weight:600;color:#0f1320;background:rgba(255,255,255,.92);border-radius:4px;padding:1px 5px">'+esc(p.name)+'</span>':'')+'</div>',iconSize:[14,14],iconAnchor:[7,7]});
+      var m=L.marker([p.lat,p.lng]).setIcon(icon).addTo(personLayer).bindPopup('<b>'+esc(p.name)+'</b>');
+      var li=document.createElement('li');
+      var dot=document.createElement('span');dot.className='dot';dot.style.background=colorFor(i);
+      var nm=document.createElement('span');nm.className='nm';nm.textContent=p.name+'  ·  '+p.lat.toFixed(4)+','+p.lng.toFixed(4);
+      var del=document.createElement('button');del.className='del';del.textContent='✕';del.onclick=function(){api('DELETE','/api/room/'+roomId+'/people/'+p.id).then(loadRoom).catch(function(e){show('删除失败：'+e.message,'err');});};
+      li.appendChild(dot);li.appendChild(nm);li.appendChild(del);ul.appendChild(li);
+    });
+  }
+  function addPerson(name,lat,lng){
+    if(!roomId)return;
+    api('POST','/api/room/'+roomId+'/people',{name:name||('人员'+(people.length+1)),lat:lat,lng:lng})
+      .then(function(){loadRoom();})
+      .catch(function(e){show('添加失败：'+e.message,'err');});
+  }
+
+  // ---------- 创建 ----------
+  $('btnCreate').onclick=function(){
+    var name=$('roomName').value.trim()||'聚会';
+    api('POST','/api/room',{name:name}).then(function(rm){history.pushState(null,'','/r/'+rm.id);enterRoom(rm.id);show('房间已创建，把链接发给朋友吧','ok');})
+      .catch(function(e){show('创建失败：'+e.message,'err');});
+  };
+  $('btnCopy').onclick=function(){
+    try{navigator.clipboard.writeText($('shareLink').textContent).then(function(){show('链接已复制','ok');});}
+    catch(e){show('复制失败，请手动复制','err');}
+  };
+
+  // ---------- 地址检索 / 我的位置 ----------
+  $('btnAddr').onclick=function(){
+    var addr=$('addrInput').value.trim();if(!addr){show('请输入地址','err');return;}
+    show('正在检索地址…','info');
+    api('POST','/api/geocode',{address:addr}).then(function(g){addPerson($('nameInput').value.trim(),g.lat,g.lng);map.setView([g.lat,g.lng],15);show('已添加','ok');}).catch(function(e){show('定位失败：'+e.message,'err');});
+  };
+  $('btnMe').onclick=function(){
+    function fallbackIp(){
+      show('浏览器定位不可用，改用 IP 定位（城市级，建议再地图点选微调）…','info');
+      api('POST','/api/ip',{}).then(function(g){
+        addPerson($('nameInput').value.trim()||'我',g.lat,g.lng);map.setView([g.lat,g.lng],11);
+        show('已用 IP 定位到'+(g.city||'你的城市')+'，位置较粗，建议用「地图点选」修正','ok');
+      }).catch(function(e){show('定位失败：'+e.message,'err');});
+    }
+    if(!navigator.geolocation){fallbackIp();return;}
+    navigator.geolocation.getCurrentPosition(function(pos){
+      var g=wgs2gcj(pos.coords.longitude,pos.coords.latitude);
+      addPerson($('nameInput').value.trim()||'我',g.lat,g.lng);map.setView([g.lat,g.lng],15);show('已添加「我」的位置','ok');
+    },function(err){
+      // 权限被拒/非 https 环境/超时 → 用服务端 IP 定位兜底
+      fallbackIp();
+    },{enableHighAccuracy:true,timeout:8000});
+  };
+  $('btnMap').onclick=function(){clickMode=!clickMode;this.textContent=clickMode?'取消点选':'地图点选';this.classList.toggle('ghost');show(clickMode?'在地图上点一下添加位置':'点选已关','info');};
+  map.on('click',function(e){if(!clickMode||!roomId)return;var nm=prompt('这个人叫什么名字（可留空）','');addPerson((nm&&nm.trim())||'',e.latlng.lat,e.latlng.lng);});
+  $('showNames').onchange=function(){renderPeople();};
+
+  // ---------- 聚会点计算 ----------
+  function haversine(a,b){var R=6371000,rad=Math.PI/180,dLat=(b.lat-a.lat)*rad,dLng=(b.lng-a.lng)*rad;var s=Math.sin(dLat/2)*Math.sin(dLat/2)+Math.cos(a.lat*rad)*Math.cos(b.lat*rad)*Math.sin(dLng/2)*Math.sin(dLng/2);return 2*R*Math.asin(Math.sqrt(s));}
+  function pts(){return people.map(function(p){return {lat:+p.lat,lng:+p.lng};});}
+  function geometricMedian(P){var cur={lat:0,lng:0},i;P.forEach(function(p){cur.lat+=p.lat;cur.lng+=p.lng;});cur.lat/=P.length;cur.lng/=P.length;for(i=0;i<80;i++){var nl=0,nn=0,dem=0,broke=false;P.forEach(function(p){var d=haversine(cur,p);if(d<1e-3){broke=true;return;}var w=1/d;nl+=w*p.lat;nn+=w*p.lng;dem+=w;});if(broke)break;var x=nl/dem,y=nn/dem;if(Math.abs(x-cur.lat)<1e-8&&Math.abs(y-cur.lng)<1e-8)break;cur.lat=x;cur.lng=y;}return cur;}
+  function centroid(P){var la=0,ln=0;P.forEach(function(p){la+=p.lat;ln+=p.lng;});return {lat:la/P.length,lng:ln/P.length};}
+  function minCircle(P){var Q=P.map(function(p){return {x:p.lng,y:p.lat};});function d(a,b){var dx=a.x-b.x,dy=a.y-b.y;return Math.sqrt(dx*dx+dy*dy);}function c2(a,b){var c={x:(a.x+b.x)/2,y:(a.y+b.y)/2};return {c:c,r:d(a,b)/2};}function c3(a,b,c){var ax=a.x,ay=a.y,bx=b.x,by=b.y,cx=c.x,cy=c.y,dd=2*(ax*(by-cy)+bx*(cy-ay)+cx*(ay-by));if(Math.abs(dd)<1e-12)return null;var ux=((ax*ax+ay*ay)*(by-cy)+(bx*bx+by*by)*(cy-ay)+(cx*cx+cy*cy)*(ay-by))/dd,uy=((ax*ax+ay*ay)*(cx-bx)+(bx*bx+by*by)*(ax-cx)+(cx*cx+cy*cy)*(bx-ax))/dd,cc={x:ux,y:uy};return {c:cc,r:d(cc,a)};}function inC(p,c){return d(p,c.c)<=c.r*1.0001;}function make(Q){var c;if(Q.length===1)return {c:Q[0],r:0};if(Q.length===2)return c2(Q[0],Q[1]);c=c2(Q[0],Q[1]);for(var i=2;i<Q.length;i++){if(inC(Q[i],c))continue;c=c2(Q[0],Q[i]);for(var j=1;j<i;j++){if(inC(Q[j],c))continue;c=c2(Q[j],Q[i]);for(var k=0;k<j;k++){if(inC(Q[k],c))continue;c=c3(Q[k],Q[j],Q[i]);if(!c)c=c2(Q[k],Q[j]);}}}return c;}var c=make(Q);if(!c)return null;var center={lat:c.c.y,lng:c.c.x},rm=0;P.forEach(function(p){var dd=haversine(center,p);if(dd>rm)rm=dd;});return {center:center,radius:rm};}
+  function km(m){return (m/1000).toFixed(2)+' km';}
+  function fmtM(m){return m>=1000?(m/1000).toFixed(2)+' km':Math.round(m)+' m';}
+  function clearMeeting(){if(meetingMarker){map.removeLayer(meetingMarker);meetingMarker=null;}if(meetingCircle){map.removeLayer(meetingCircle);meetingCircle=null;}}
+  function stat(center){var t=0,m=0;pts().forEach(function(p){var d=haversine(center,p);t+=d;if(d>m)m=d;});return {t:t,m:m};}
+  $('btnCalc').onclick=function(){
+    if(people.length<2){show('至少需要 2 个人的位置','err');return;}
+    var P=pts(),med=geometricMedian(P),mec=minCircle(P),cen=centroid(P);
+    var mode=document.querySelector('input[name=mode]:checked').value;
+    var chosen=mode==='minmax'&&mec?mec.center:(mode==='centroid'?cen:med);
+    meeting={median:med,minmax:(mec?mec.center:med),centroid:cen};
+    clearMeeting();
+    var icon=L.divIcon({className:'',html:'<div style="width:22px;height:22px"><div style="width:22px;height:22px;background:#37c99a;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,.5)"></div></div>',iconSize:[22,22],iconAnchor:[11,22]});
+    meetingMarker=L.marker([chosen.lat,chosen.lng],{zIndexOffset:1000}).setIcon(icon).addTo(map).bindPopup('<b>🎯 推荐聚会点</b>');
+    var sMed=stat(med),sMec=stat(mec.center),sCen=stat(cen),sChosen=stat(chosen);
+    if(meeting.median.radiusCover===undefined||true){ /* 覆盖圆用最远距离 */ }
+    if(sChosen.m>0){meetingCircle=L.circle([chosen.lat,chosen.lng],{radius:sChosen.m,color:'#37c99a',fillColor:'#37c99a',fillOpacity:.08,weight:1.5,dashArray:'6 4'}).addTo(map);}
+    map.fitBounds(pts().map(function(p){return [p.lat,p.lng];}),{padding:[55,55],maxZoom:16});
+    var modeName=mode==='minmax'?'谁都近(最远最短)':(mode==='centroid'?'几何中心':'总路程最短');
+    var st=$('stats');st.style.display='block';
+    st.innerHTML='<div><span class="k">推荐聚会点：</span><b>'+modeName+'</b></div>'
+      +'<div style="margin-top:5px;color:var(--dim)">三种口径对比（总路程 / 最远路程）</div>'
+      +'<div>· 总路程最短：<span class="k">'+km(sMed.t)+' / '+km(sMed.m)+'</span></div>'
+      +'<div>· 谁都近：<span class="k">'+km(sMec.t)+' / '+km(sMec.m)+'</span></div>'
+      +'<div>· 几何中心：<span class="k">'+km(sCen.t)+' / '+km(sCen.m)+'</span></div>'
+      +'<div style="margin-top:5px"><span class="k">当前选择：</span>'+km(sChosen.t)+' 总路程 · 最远 '+km(sChosen.m)+'</div>'
+      +'<div style="margin-top:8px"><button id="btnDestMeeting" style="width:100%;background:var(--acc);color:#071018;border:none;border-radius:6px;padding:8px;font-size:13px;font-weight:600;cursor:pointer">📍 查看每人到推荐点的距离</button></div>';
+    var db=$('btnDestMeeting');if(db)db.onclick=function(){selectDestination({name:'推荐聚会点',lat:chosen.lat,lng:chosen.lng});};
+    show('已计算聚会点，可下拉搜索附近场所','ok');
+  };
+
+  // ---------- 附近场所搜索 ----------
+  function searchVenues(){
+    if(!people.length||!meeting){show('请先「计算聚会点」','err');return;}
+    var mode=document.querySelector('input[name=mode]:checked').value;
+    var center=mode==='minmax'?meeting.minmax:(mode==='centroid'?meeting.centroid:meeting.median);
+    var kw=$('customKw').value.trim()||$('category').value;
+    var unit=$('radiusUnit').value, r=+$('radius').value||3000;
+    if(unit==='km')r=r*1000;if(unit==='all')r=50000;if(r<100)r=100;if(r>100000)r=100000;
+    var radiusLabel=unit==='all'?'不限':fmtM(r);
+    clearDest();
+    show('正在搜索「'+kw+'」'+(unit==='all'?'（不限范围）':'')+'…','info');
+    api('POST','/api/place',{keyword:kw,lat:center.lat,lng:center.lng,radius:r}).then(function(d){
+      var places=(d.pois||[]);
+      places.forEach(function(p){p.dist=haversine(center,p);p.label=kw;});
+      places.sort(function(a,b){return a.dist-b.dist;});
+      venueLayer.clearLayers();
+      var list=$('venues');list.innerHTML='';var empty=$('venuesEmpty');
+      var shown=places.slice(0,60);
+      if(!shown.length){empty.style.display='block';empty.textContent='没找到'+(unit==='all'?'「'+kw+'」（不限范围）':('「'+kw+'」，半径 '+radiusLabel));show('未找到'+kw,'err');return;}
+      empty.style.display='none';
+      shown.forEach(function(p){
+        var icon=L.divIcon({className:'',html:'<div style="width:12px;height:12px;border-radius:50%;background:#4b9cff;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.5)"></div>',iconSize:[12,12],iconAnchor:[6,6]});
+        L.marker([p.lat,p.lng],{icon:icon}).addTo(venueLayer).bindPopup('<b>'+esc(p.name)+'</b><br>'+esc(p.label)+' · '+fmtM(p.dist)+(p.addr?'<br>'+esc(p.addr):''));
+        var card=document.createElement('div');card.className='vcard';
+        var ic=document.createElement('span');ic.className='ic';ic.style.background='#4b9cff';
+        var body=document.createElement('div');body.className='body';
+        var nm=document.createElement('div');nm.className='nm';nm.textContent=p.name;
+        var sub=document.createElement('div');sub.className='sub';sub.textContent=p.label+' · '+fmtM(p.dist)+(p.addr?' · '+p.addr:'');
+        body.appendChild(nm);body.appendChild(sub);
+        var act=document.createElement('div');act.style.cssText='display:flex;flex-direction:column;gap:5px;align-items:flex-end;flex:none;';
+        var sel=document.createElement('button');sel.style.cssText='background:var(--panel2);border:1px solid var(--acc);color:var(--acc);border-radius:4px;padding:3px 7px;font-size:11px;cursor:pointer;font-weight:600';sel.textContent='作为目的地';sel.onclick=function(){selectDestination(p);};
+        var a=document.createElement('a');a.className='colink';a.target='_blank';a.href='https://uri.amap.com/navigation?to='+p.lng+','+p.lat+','+encodeURIComponent(p.name)+'&from='+center.lng+','+center.lat;a.textContent='导航';
+        act.appendChild(sel);act.appendChild(a);
+        card.appendChild(ic);card.appendChild(body);card.appendChild(act);
+        list.appendChild(card);
+      });
+      var bounds=shown.map(function(p){return [p.lat,p.lng];});bounds.push([center.lat,center.lng]);
+      map.fitBounds(bounds,{padding:[30,30]});
+      show('找到 '+shown.length+' 个「'+kw+'」'+(unit==='all'?'（不限范围）':' · 半径 '+radiusLabel),'ok');
+    }).catch(function(e){show('搜索失败：'+e.message,'err');});
+  }
+  $('btnSearch').onclick=searchVenues;
+  $('radiusUnit').onchange=function(){var rI=$('radius');if(rI)rI.disabled=(this.value==='all');};
+
+  // ---------- 最终目的地：每人距离 ----------
+  var destLayer=L.layerGroup().addTo(map);
+  function clearDest(){destLayer.clearLayers();var dp=$('destPanel');if(dp)dp.style.display='none';}
+  function selectDestination(p){
+    destLayer.clearLayers();
+    var dp=$('destPanel');
+    if(!people.length){if(dp)dp.style.display='none';return;}
+    var icon=L.divIcon({className:'',html:'<div style="width:22px;height:22px"><div style="width:22px;height:22px;background:#e05b5b;border:3px solid #fff;border-radius:50% 50% 50% 0;transform:rotate(-45deg);box-shadow:0 2px 6px rgba(0,0,0,.5)"></div></div>',iconSize:[22,22],iconAnchor:[11,22]});
+    L.marker([p.lat,p.lng],{zIndexOffset:2000}).setIcon(icon).addTo(destLayer).bindPopup('<b>📍 '+esc(p.name)+'</b>');
+    var rows='',tot=0,max=0;
+    people.forEach(function(pp,i){
+      var dd=haversine({lat:p.lat,lng:p.lng},{lat:+pp.lat,lng:+pp.lng});
+      tot+=dd;if(dd>max)max=dd;
+      L.polyline([[p.lat,p.lng],[+pp.lat,+pp.lng]],{color:colorFor(i),weight:2,opacity:.75,dashArray:'4 3'}).addTo(destLayer);
+      rows+='<div style="display:flex;align-items:center;gap:8px;padding:3px 0"><span style="width:10px;height:10px;border-radius:50%;background:'+colorFor(i)+';flex:none"></span><span style="flex:1">'+esc(pp.name)+'</span><span style="color:var(--ok);font-weight:600">'+fmtM(dd)+'</span></div>';
+    });
+    dp.innerHTML='<div style="background:var(--panel2);border:1px solid var(--line);border-radius:6px;padding:10px 12px;margin-top:8px"><div style="font-size:12.5px;font-weight:600;margin-bottom:4px">📍 到「'+esc(p.name)+'」各人的距离</div>'+rows+'<div style="border-top:1px solid var(--line);margin-top:6px;padding-top:6px;font-size:12px"><span class="k">总路程</span> <b>'+km(tot)+'</b> · <span class="k">最远</span> <b>'+km(max)+'</b></div></div>';
+    dp.style.display='block';
+    var b=people.map(function(pp){return [+pp.lat,+pp.lng];});b.push([p.lat,p.lng]);
+    map.fitBounds(b,{padding:[40,40],maxZoom:16});
+  }
+
+  // ---------- 启动 ----------
+  var rid=roomFromPath();
+  if(rid){enterRoom(rid);}
+})();
+</script>
+</body>
+</html>
